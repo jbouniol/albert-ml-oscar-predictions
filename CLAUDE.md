@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> Règles d'orchestration multi-agents : voir [`ORCHESTRATOR.md`](ORCHESTRATOR.md)
+
 ## Projet
 
 Projet académique ML : **predire les nominees et gagnants aux Oscars** a partir de donnees IMDb enrichies (box office, analyse sentimentale, bios acteurs, etc.). Livrable final : notebooks d'analyse + presentation, et une interface web (Streamlit ou autre).

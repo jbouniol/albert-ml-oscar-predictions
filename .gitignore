@@ -27,3 +27,6 @@ env/
 
 # Environment
 .env
+
+# Claude
+tasks/
