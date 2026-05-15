@@ -6,17 +6,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projet
 
-Projet académique ML : **predire les nominees et gagnants aux Oscars** a partir de donnees IMDb enrichies (box office, analyse sentimentale, bios acteurs, etc.). Livrable final : notebooks d'analyse + presentation, et une interface web (Streamlit ou autre).
+Projet académique ML : **predire les nominees et gagnants aux Oscars** a partir de donnees IMDb et TMDb enrichies. Livrable final : notebooks d'analyse + presentation, et une interface web (Streamlit ou autre).
 
 - **Repo** : `git@github.com:jbouniol/albert-ml-oscar-predictions.git`
-- **Scope** : Films nomines aux Oscars (2000-2022)
+- **Scope** : Films nomines aux Oscars (2000-2025)
 - **Langue du code** : Python, conventions en anglais (noms de variables, fonctions, commits)
 - **Langue des commentaires/docs** : Francais
 - **Equipe** : Anna, Keira, Robin, Jonathan
 
 ## Donnees
 
-### IMDb Non-Commercial Datasets (`Data/Raw/IMDb/`)
+Trois sources sont combinees dans `Notebooks/EDA_merge.ipynb` pour produire le dataset final `Data/Processed/oscar_imdb_merged.parquet` (+ `.csv` pour inspection).
+
+### 1. Scraping Oscar — Wikipedia (`Data/Raw/Scraping/`)
+
+Source : scraping des pages Wikipedia "Nth Academy Awards" (cf. [`Notebooks/scraping.ipynb`](Notebooks/scraping.ipynb)).
+
+| Fichier | Contenu | Lignes |
+|---------|---------|--------|
+| `all_data_oscars.csv` | Une ligne par categorie × ceremonie : winner + nominees separes par `\|` | 2194 (1929-2026) |
+| `all_data_oscars.json` | Meme contenu, format JSON | idem |
+
+Colonnes : `ceremony_number`, `year`, `date`, `url`, `category`, `winner`, `nominees`.
+
+**Important** : 119 categories distinctes historiquement — le notebook les normalise (regroupe les variantes : "Best Actor" ↔ "Best Actor in a Leading Role", "Best Art Direction" ↔ "Best Production Design", etc.) et passe le dataset en format long (une ligne par nominee, colonne `winner` booleenne).
+
+### 2. IMDb Non-Commercial Datasets (`Data/Raw/IMDb/`)
 
 Source : [IMDb developer datasets](https://developer.imdb.com/non-commercial-datasets/). Fichiers TSV, separateur tabulation, `\N` pour les valeurs manquantes.
 
@@ -30,11 +45,30 @@ Source : [IMDb developer datasets](https://developer.imdb.com/non-commercial-dat
 | `title.akas.tsv` | tconst, title, region, language | ~2.8 GB |
 | `title.episode.tsv` | tconst, parentTconst, seasonNumber, episodeNumber | ~250 MB |
 
-**Important** : Ces fichiers font ~10 Go au total. Toujours filtrer tot (ex: `titleType == 'movie'`, `startYear >= 2000`) et utiliser la lecture par chunks ou l'optimisation des dtypes avec pandas.
+**Important** : Ces fichiers font ~10 Go au total. Toujours filtrer tot (ex: `titleType == 'movie'`, `startYear >= 2000`) et utiliser la lecture par chunks ou l'optimisation des dtypes avec pandas. Le matching Oscar ↔ IMDb se fait par titre de film (categories "film") et par nom de personne via `title.principals` (categories "personne").
 
-### Donnees Oscar (a venir)
+### 3. TMDb API (`Data/Processed/tmdb_cache.parquet`)
 
-Un dataset supplementaire avec les nominations et victoires aux Oscars est necessaire — les donnees IMDb seules ne contiennent pas cette info. Sources probables : Kaggle, scraping de la base Academy Awards.
+Source : [The Movie Database API](https://developer.themoviedb.org/). Enrichissement par appel API (lookup par `tconst` IMDb, 2 calls par film : `/find/{tconst}` puis `/movie/{tmdb_id}?append_to_response=keywords`).
+
+**Cle API** : stockee dans `.env` a la racine (gitignored). Variable : `TMDB_API_KEY`. Quota journalier supprime par TMDb en 2023, seul le rate limit (~50 req/s) subsiste.
+
+**Volumes** : ~1097 films uniques × 2 calls = ~2200 requetes, ~2 min au premier run. Cache parquet ecrit incrementalement (toutes les 50 iterations) → reprise automatique apres interruption, reruns instantanes.
+
+| Colonne | Type | Contenu |
+|---------|------|---------|
+| `tmdb_id` | int | Identifiant TMDb (pivot avec `/movie/{id}`) |
+| `overview` | str | Synopsis court (1-3 phrases) |
+| `tagline` | str | Phrase marketing du film |
+| `release_date` | str (YYYY-MM-DD) | Date de sortie complete (vs `film_year` IMDb seul) |
+| `original_language` | str (ISO 639-1) | Langue originale ("en", "ko", "fr"...) |
+| `keywords` | list[str] | Mots-cles thematiques (10-30 par film, ex: "dystopia", "father son relationship") |
+| `production_countries` | list[str] (ISO 3166-1) | Pays de production |
+| `budget` | int (USD) | Budget de production (0 si inconnu) |
+| `revenue` | int (USD) | Recette mondiale (0 si inconnu) |
+| `tmdb_vote_average` | float | Note TMDb (0-10) |
+| `tmdb_vote_count` | int | Nombre de votes TMDb |
+| `error` | str / null | `null` si OK, sinon raison (`not_found_on_tmdb`, message HTTP, etc.) |
 
 ### Convention des repertoires Data
 
@@ -45,11 +79,17 @@ Un dataset supplementaire avec les nominations et victoires aux Oscars est neces
 
 ```
 applied_ml_for_business/
+├── .env                   # Cle API TMDb (gitignored)
 ├── Data/
-│   ├── Raw/IMDb/          # Fichiers TSV sources (gitignored)
+│   ├── Raw/
+│   │   ├── IMDb/          # Fichiers TSV sources (gitignored, ~10 Go)
+│   │   └── Scraping/      # CSV/JSON scrapes depuis Wikipedia
 │   └── Processed/         # Datasets generes (gitignored)
-├── Notebooks/             # Jupyter notebooks (numerotes : 01_, 02_, etc.)
-├── src/                   # Modules Python reutilisables (principe DRY)
+│       ├── tmdb_cache.parquet      # Cache des appels API TMDb
+│       └── oscar_imdb_merged.*     # Dataset final (parquet + csv)
+├── Notebooks/
+│   ├── scraping.ipynb     # Scraping Wikipedia des nominations Oscar
+│   └── EDA_merge.ipynb    # Pipeline complet : merge IMDb + Oscar + enrichissement TMDb
 └── app/                   # Interface web Streamlit (optionnel)
 ```
 
@@ -107,6 +147,9 @@ python -m venv .venv && source .venv/bin/activate
 # Installer les dependances
 pip install -r requirements.txt
 
+# Configurer la cle TMDb (a creer sur themoviedb.org/settings/api)
+echo "TMDB_API_KEY=ta_cle_ici" > .env
+
 # Lancer les notebooks
 jupyter lab
 
@@ -116,5 +159,6 @@ streamlit run app/main.py
 
 ## Contraintes du projet
 
-- **Principe DRY** : Extraire la logique repetee dans des modules `src/`. Exigence explicite du professeur.
+- **Principe DRY** : Extraire la logique repetee en fonctions reutilisables (helpers definis dans le notebook). Exigence explicite du professeur.
 - **Feature engineering obligatoire** : Ne pas supposer que les donnees brutes sont pretes pour le ML.
+- **Caching des appels API** : Toute requete TMDb doit etre cachee sur disque pour resilience et reproductibilite (cf. `tmdb_cache.parquet`).
