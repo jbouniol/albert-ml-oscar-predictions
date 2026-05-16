@@ -30,3 +30,4 @@ env/
 
 # Claude
 tasks/.claude/
+.claude/
