@@ -6,10 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projet
 
-Projet académique ML : **predire les nominees et gagnants aux Oscars** a partir de donnees IMDb et TMDb enrichies. Livrable final : notebooks d'analyse + presentation, et une interface web (Streamlit ou autre).
+Projet académique ML : **predire les nominations aux Oscars** a partir de donnees IMDb et TMDb enrichies. Objectif en **deux etages** :
+1. **Etage principal — NOMINATION** : predire *qui sera nomine* dans chaque categorie (`nominated ∈ {0,1}`, metrique metier **Precision@K**, K = nb de slots/an).
+2. **Etage bonus — GAGNANT** : parmi les nomines, predire *le gagnant* (`winner ∈ {0,1}`, **top-1 accuracy** = argmax par groupe `(categorie, annee)`).
+
+Livrable final : notebooks d'analyse + presentation, et une interface web (Streamlit ou autre).
 
 - **Repo** : `git@github.com:jbouniol/albert-ml-oscar-predictions.git`
-- **Scope** : Films nomines aux Oscars (2000-2025)
+- **Scope** : nominations Oscar **2000-2026**, **7 categories** modelisees — Best Picture, Director, Actor, Actress, Supporting Actor, Supporting Actress, Original Screenplay. *Best Animated Feature* et *Best Visual Effects* explores puis **exclus** du livrable (faible valeur marche + aucune spec technique exploitable dans IMDb/TMDb).
 - **Langue du code** : Python, conventions en anglais (noms de variables, fonctions, commits)
 - **Langue des commentaires/docs** : Francais
 - **Equipe** : Anna, Keira, Robin, Jonathan
@@ -70,10 +74,42 @@ Source : [The Movie Database API](https://developer.themoviedb.org/). Enrichisse
 | `tmdb_vote_count` | int | Nombre de votes TMDb |
 | `error` | str / null | `null` si OK, sinon raison (`not_found_on_tmdb`, message HTTP, etc.) |
 
+### 4. Set negatif — dataset de nomination (`Data/Processed/oscar_nomination_dataset.parquet`)
+
+`oscar_imdb_merged.parquet` ne contient **que des positifs** (2 427 nominations). Pour l'**etage 1 (nomination)**, on construit un **set negatif** = candidats *eligibles non nomines* (cf. `EDA_merge.ipynb §8`).
+
+**Stratégie B+** (eligibilite "in conversation", logique cinephile + data-driven) :
+- **Films** (Best Picture, Original Screenplay) : `titleType == movie`, `startYear ∈ [1999, 2025]`, `runtimeMinutes ≥ 60`, `numVotes ≥ 10 000`, `averageRating ≥ 5.0`, genre ≠ Documentary → ~290 films/an.
+- **Personnes** (Director, Actor/Actress lead & supporting) : acteurs/realisateurs des films eligibles via `title.principals` (lead = `ordering ≤ 2`, supporting = `ordering 3-5`, genre via `category` actor/actress).
+
+**Regles cles** :
+- Match positif sur le **triplet** `(nconst, year, tconst)` — le film *precis* de la nomination (sinon les autres roles de la personne la meme annee seraient faussement etiquetes nomines).
+- **Re-injection de TOUS les positifs reels** (fallback features depuis `oscar_imdb_merged`) → aucun vrai nomine perdu, meme si son film est sous le seuil d'eligibilite.
+- **Anti-leakage** : seules des features connues *avant* les nominations (note, votes, duree, genres, decennie, historique Oscar de la personne `n_prior_noms`, billing). `film_n_total_noms` est **exclu** (post-nomination).
+
+Colonnes : `tconst`, `nconst`, `year`, `nominated ∈ {0,1}`, `category`, `kind` (film/person) + features. ~62 850 lignes, base-rate ~1-3 % selon categorie.
+
 ### Convention des repertoires Data
 
 - `Data/Raw/` — fichiers sources non modifies (non commites, trop volumineux)
 - `Data/Processed/` — datasets nettoyes, merges, feature-engineeres (generes par les notebooks)
+- Caches internes (prefixe `_`, gitignored) : `_elig_films_broad.parquet`, `_principals_elig.parquet` — accelerent les reruns du set negatif sans relire les TSV bruts.
+
+## Modelisation — objectif en 2 etages
+
+| | **Etage 1 — NOMINATION** (principal) | **Etage 2 — GAGNANT** (bonus) |
+|---|---|---|
+| Notebook | `EDA_merge.ipynb §8` | `Model_experimentation.ipynb` |
+| Unite | 1 candidat eligible × (categorie, annee) | 1 nomine × (categorie, annee) |
+| Cible | `nominated ∈ {0,1}` | `winner ∈ {0,1}` |
+| Negatifs | candidats eligibles non nomines (set negatif) | nomines perdants (deja dans le dataset) |
+| Base-rate | ~1-3 % | 13-26 % |
+| Metrique | **Precision@K** (K = nb de slots/an) + PR-AUC | **top-1 accuracy** (argmax/groupe) + PR-AUC + log-loss |
+| Validation | `GroupKFold(5, groups=year)` — pas de split aleatoire, anti-leakage temporel |
+
+- **1 modele independant par categorie** (chaque categorie a sa propre logique de vote).
+- 5 modeles ML candidats + 2 baselines (random, most-nominated) ; justification par categorie dans `Model justification.ipynb`.
+- Finding : les **seconds roles** se predisent mieux que les premiers (veteran dans film acclame = signal net) ; pour certaines categories la **baseline reste imbattable** (ex. Best Actor Supporting) — on l'assume.
 
 ## Structure du projet
 
@@ -85,11 +121,18 @@ applied_ml_for_business/
 │   │   ├── IMDb/          # Fichiers TSV sources (gitignored, ~10 Go)
 │   │   └── Scraping/      # CSV/JSON scrapes depuis Wikipedia
 │   └── Processed/         # Datasets generes (gitignored)
-│       ├── tmdb_cache.parquet      # Cache des appels API TMDb
-│       └── oscar_imdb_merged.*     # Dataset final (parquet + csv)
+│       ├── tmdb_cache.parquet            # Cache des appels API TMDb
+│       ├── oscar_imdb_merged.*           # Dataset des nominations (positifs) — parquet + csv
+│       ├── oscar_nomination_dataset.parquet  # Etage 1 : positifs + set negatif (7 cats)
+│       └── _elig_films_broad / _principals_elig.parquet  # caches internes
 ├── Notebooks/
-│   ├── scraping.ipynb     # Scraping Wikipedia des nominations Oscar
-│   └── EDA_merge.ipynb    # Pipeline complet : merge IMDb + Oscar + enrichissement TMDb
+│   ├── scraping.ipynb              # Scraping Wikipedia des nominations Oscar
+│   ├── EDA_merge.ipynb             # Pipeline merge IMDb+Oscar+TMDb + §8 set negatif (etage 1)
+│   ├── 01_EDA_visualisation.ipynb  # EDA / visualisations du dataset
+│   ├── EDA Justification.ipynb     # EDA justifiant les choix de modelisation
+│   ├── Model justification.ipynb   # Hypotheses de modeles par categorie (7 cats)
+│   └── Model_experimentation.ipynb # Etage 2 (bonus) : prediction du gagnant + interpretabilite
+├── tasks/                 # todo.md (plan) + lessons.md (boucle d'auto-amelioration)
 └── app/                   # Interface web Streamlit (optionnel)
 ```
 
