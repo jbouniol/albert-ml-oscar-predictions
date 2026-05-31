@@ -85,7 +85,8 @@ Source : [The Movie Database API](https://developer.themoviedb.org/). Enrichisse
 **Regles cles** :
 - Match positif sur le **triplet** `(nconst, year, tconst)` — le film *precis* de la nomination (sinon les autres roles de la personne la meme annee seraient faussement etiquetes nomines).
 - **Re-injection de TOUS les positifs reels** (fallback features depuis `oscar_imdb_merged`) → aucun vrai nomine perdu, meme si son film est sous le seuil d'eligibilite.
-- **Anti-leakage** : seules des features connues *avant* les nominations (note, votes, duree, genres, decennie, historique Oscar de la personne `n_prior_noms`, billing). `film_n_total_noms` est **exclu** (post-nomination).
+- **Anti-leakage** : seules des features connues *avant* les nominations (note, votes, duree, genres, historique Oscar de la personne `n_prior_noms`, billing). `film_n_total_noms` est **exclu** (post-nomination). `decade` a ete **retiree** (feature grossiere a 3 valeurs, contribution = artefact d'epoque non causal, fragilise le SHAP).
+- **Selection de modele** : 6 modeles benchmarkes par categorie (OOF GroupKFold/annee) → `Data/Processed/benchmark_nomination_models.csv`. Le meilleur varie (LogReg pour Film/Realisateur, RandomForest pour la plupart des personnes, XGBoost pour Actrice SR) — Precision@K **0.31–0.68**, lift **×13 a ×77** ; les baselines (votes/note/random) ne battent le ML dans aucune categorie.
 
 Colonnes : `tconst`, `nconst`, `year`, `nominated ∈ {0,1}`, `category`, `kind` (film/person) + features. ~62 850 lignes, base-rate ~1-3 % selon categorie.
 
