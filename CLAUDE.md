@@ -20,11 +20,11 @@ Livrable final : notebooks d'analyse + presentation, et une interface web (Strea
 
 ## Donnees
 
-Trois sources sont combinees dans `Notebooks/EDA_merge.ipynb` pour produire le dataset final `Data/Processed/oscar_imdb_merged.parquet` (+ `.csv` pour inspection).
+Trois sources sont combinees dans `Notebooks/01_Merge_datasets.ipynb` pour produire le dataset final `Data/Processed/oscar_imdb_merged.parquet` (+ `.csv` pour inspection).
 
 ### 1. Scraping Oscar — Wikipedia (`Data/Raw/Scraping/`)
 
-Source : scraping des pages Wikipedia "Nth Academy Awards" (cf. [`Notebooks/scraping.ipynb`](Notebooks/scraping.ipynb)).
+Source : scraping des pages Wikipedia "Nth Academy Awards" (cf. [`Notebooks/00_Scraping.ipynb`](Notebooks/00_Scraping.ipynb)).
 
 | Fichier | Contenu | Lignes |
 |---------|---------|--------|
@@ -76,7 +76,7 @@ Source : [The Movie Database API](https://developer.themoviedb.org/). Enrichisse
 
 ### 4. Set negatif — dataset de nomination (`Data/Processed/oscar_nomination_dataset.parquet`)
 
-`oscar_imdb_merged.parquet` ne contient **que des positifs** (2 427 nominations). Pour l'**etage 1 (nomination)**, on construit un **set negatif** = candidats *eligibles non nomines* (cf. `EDA_merge.ipynb §8`).
+`oscar_imdb_merged.parquet` ne contient **que des positifs** (2 427 nominations). Pour l'**etage 1 (nomination)**, on construit un **set negatif** = candidats *eligibles non nomines* (cf. `05_Nomination_modeling.ipynb`).
 
 **Stratégie B+** (eligibilite "in conversation", logique cinephile + data-driven) :
 - **Films** (Best Picture, Original Screenplay) : `titleType == movie`, `startYear ∈ [1999, 2025]`, `runtimeMinutes ≥ 60`, `numVotes ≥ 10 000`, `averageRating ≥ 5.0`, genre ≠ Documentary → ~290 films/an.
@@ -100,7 +100,7 @@ Colonnes : `tconst`, `nconst`, `year`, `nominated ∈ {0,1}`, `category`, `kind`
 
 | | **Etage 1 — NOMINATION** (principal) | **Etage 2 — GAGNANT** (bonus) |
 |---|---|---|
-| Notebook | `EDA_merge.ipynb §8` | `Model_experimentation.ipynb` |
+| Notebook | `05_Nomination_modeling.ipynb` | `06_Winner_modeling.ipynb` |
 | Unite | 1 candidat eligible × (categorie, annee) | 1 nomine × (categorie, annee) |
 | Cible | `nominated ∈ {0,1}` | `winner ∈ {0,1}` |
 | Negatifs | candidats eligibles non nomines (set negatif) | nomines perdants (deja dans le dataset) |
@@ -109,7 +109,7 @@ Colonnes : `tconst`, `nconst`, `year`, `nominated ∈ {0,1}`, `category`, `kind`
 | Validation | `GroupKFold(5, groups=year)` — pas de split aleatoire, anti-leakage temporel |
 
 - **1 modele independant par categorie** (chaque categorie a sa propre logique de vote).
-- 5 modeles ML candidats + 2 baselines (random, most-nominated) ; justification par categorie dans `Model justification.ipynb`.
+- 5 modeles ML candidats + 2 baselines (random, most-nominated) ; justification par categorie dans `04_Model_justification.ipynb`.
 - Finding : les **seconds roles** se predisent mieux que les premiers (veteran dans film acclame = signal net) ; pour certaines categories la **baseline reste imbattable** (ex. Best Actor Supporting) — on l'assume.
 
 ## Structure du projet
@@ -127,12 +127,13 @@ applied_ml_for_business/
 │       ├── oscar_nomination_dataset.parquet  # Etage 1 : positifs + set negatif (7 cats)
 │       └── _elig_films_broad / _principals_elig.parquet  # caches internes
 ├── Notebooks/
-│   ├── scraping.ipynb              # Scraping Wikipedia des nominations Oscar
-│   ├── EDA_merge.ipynb             # Pipeline merge IMDb+Oscar+TMDb + §8 set negatif (etage 1)
-│   ├── 01_EDA_visualisation.ipynb  # EDA / visualisations du dataset
-│   ├── EDA Justification.ipynb     # EDA justifiant les choix de modelisation
-│   ├── Model justification.ipynb   # Hypotheses de modeles par categorie (7 cats)
-│   └── Model_experimentation.ipynb # Etage 2 (bonus) : prediction du gagnant + interpretabilite
+│   ├── 00_Scraping.ipynb              # Collecte : scraping Wikipedia des nominations Oscar
+│   ├── 01_Merge_datasets.ipynb        # Construction du dataset : merge IMDb + Oscar + TMDb
+│   ├── 02_EDA_visualisation.ipynb     # EDA / visualisations du dataset
+│   ├── 03_EDA_justification.ipynb     # EDA justifiant les choix de modelisation
+│   ├── 04_Model_justification.ipynb   # Hypotheses de modeles par categorie (7 cats)
+│   ├── 05_Nomination_modeling.ipynb   # Etage 1 (principal) : prediction des nominations (set negatif B+)
+│   └── 06_Winner_modeling.ipynb       # Etage 2 (bonus) : prediction du gagnant + interpretabilite
 ├── tasks/                 # todo.md (plan) + lessons.md (boucle d'auto-amelioration)
 └── app/                   # Interface web Streamlit (optionnel)
 ```
