@@ -32,3 +32,6 @@ env/
 tasks/.claude/
 .claude/
 INSTRUCTIONS_CLAUDE_CODE_PHASE4.md
+
+# Backups
+.nb_backup/
