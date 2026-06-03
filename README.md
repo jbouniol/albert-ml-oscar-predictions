@@ -4,6 +4,14 @@ Projet de Machine Learning applique : **predire les nominations aux Oscars** (ob
 en bonus, **le gagnant parmi les nomines**, a partir de donnees combinees IMDb + scraping Wikipedia
 des ceremonies + enrichissement via l'API TMDb. Perimetre : ceremonies **2000-2026**, **7 categories**.
 
+## Presentation
+
+> La presentation complete du projet (slides) est hebergee sur Canva.
+
+[![Voir la presentation sur Canva](https://img.shields.io/badge/%F0%9F%8E%AC%20Voir%20la%20pr%C3%A9sentation-Canva-7D2AE8?style=for-the-badge&logo=canva&logoColor=white)](https://canva.link/je1tv6vtppm0v5v)
+
+<sub>Lien direct : https://canva.link/je1tv6vtppm0v5v</sub>
+
 ## Equipe
 
 - Anna
